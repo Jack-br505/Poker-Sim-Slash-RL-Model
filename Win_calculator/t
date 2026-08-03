@@ -1,0 +1,16 @@
+import time
+import sys
+sys.path.insert(0, '/Users/jackbrach/dev/Poker_Sim/Base_Sim')
+from Deck_Hand import hand, deck
+from Game import quick_game, many_games
+
+start_time = time.perf_counter()
+
+many_games(100000, players = 2, print_output=False)
+
+# 3. Stop the timer
+end_time = time.perf_counter()
+
+# 4. Calculate total elapsed time
+elapsed_time = end_time - start_time
+print(f"Process completed in {elapsed_time:.4f} seconds")
