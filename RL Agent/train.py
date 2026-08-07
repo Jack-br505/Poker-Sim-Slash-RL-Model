@@ -5,7 +5,8 @@ import os
 
 if __name__ == '__main__':
     env = PokerEnv()
-    rewards = env.train(episodes=40000)
+    env.load_model('models/pre_flop_q_table.pkl')  # Load the pre-trained model if it exists
+    rewards = env.train(episodes=20000, simple_opponent=False)  # Set advanced=True to use the new training method
     print('Training complete')
     print('Average reward:', sum(rewards) / len(rewards))
     print('Policy size:', len(env.get_policy()))
@@ -13,7 +14,7 @@ if __name__ == '__main__':
     # Save trained Q-table
     models_dir = 'models'
     os.makedirs(models_dir, exist_ok=True)
-    model_path = os.path.join(models_dir, 'q_table.pkl')
+    model_path = os.path.join(models_dir, 'pre_flop_q_table.pkl')
     env.save_model(model_path)
     print(f'Model saved to {model_path}')
 
@@ -22,9 +23,3 @@ card1 = ['A', 'Diamonds']
 card2 = ['K', 'Hearts']
 print('\nDecision with trained model:')
 print(env.make_decision(card1, card2))
-
-# Example: load into a new environment and use the saved model
-new_env = PokerEnv()
-new_env.load_model(model_path)
-print('Loaded policy size:', len(new_env.get_policy()))
-print('Decision from loaded model:', new_env.make_decision(card1, card2))

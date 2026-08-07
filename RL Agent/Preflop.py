@@ -727,12 +727,12 @@ class PokerEnv:
         self.q_table = {}
         self.last_state = None
 
-    def reset(self, card1=None, card2=None):
+    def reset(self, card1=None, card2=None, dealer=1):
         if card1 is not None and card2 is not None:
             self.game = game(
                 players=self.players,
                 chip_dict={i: self.starting_stack for i in range(self.players)},
-                dealer=1,
+                dealer=dealer,
                 card1=card1,
                 card2=card2,
             )
@@ -740,14 +740,19 @@ class PokerEnv:
             self.game = game(
                 players=self.players,
                 chip_dict={i: self.starting_stack for i in range(self.players)},
-                dealer=1,
+                dealer=dealer,
             )
         self.pot = self.blind
         self.current_to_call = self.blind
-        self.agent_contribution = 0
-        self.opponent_contribution = 0
+        if dealer == 0:
+            self.agent_contribution = 0
+            self.opponent_contribution = self.blind
+        else:
+            self.agent_contribution = self.blind
+            self.opponent_contribution = 0
+        
         self.done = False
-        self.reward = 0
+        self.reward = 2
         return self._get_state()
 
     def _encode_card(self, card):
@@ -759,9 +764,17 @@ class PokerEnv:
         player_hand = self.game.hands_dict[0]
         hand_strength = self._preflop_strength(player_hand)
         return(
-            hand_strength
+            hand_strength,
+            self.current_to_call - self.agent_contribution
         )
-
+    def _get_opp_state(self):
+            player_hand = self.game.hands_dict[1]
+            hand_strength = self._preflop_strength(player_hand)
+            return(
+                hand_strength,
+                self.current_to_call - self.opponent_contribution
+            )
+    
     def _card_value(self, card):
         values = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14}
         return values[card[0]]
@@ -793,6 +806,9 @@ class PokerEnv:
             return 1 if np.random.rand() < 0.6 else 0
         return 1 
 
+    def _complex_opponent_policy(self, environment):
+        """Set a a more complex opponent by having the agent learn against itself. Update policy every 1000 episodes"""
+        pass
     def _resolve_showdown(self):
         winner = self.game.get_winner(players_in_game=[0, 1])
         if winner == 0:
@@ -849,6 +865,131 @@ class PokerEnv:
         self.done = True
         return self._get_state(), self.reward, self.done, {"winner": 0 if self.reward > 0 else 1}
 
+    def advanced_step(self, epsilon=0.2):
+        """Modified version of the step function that allows for more complex opponent behavior, pitting the model agaisnt itself. Also allows for different dealers"""
+        if self.done:
+            raise RuntimeError("Environment is already done. Call reset() first.")
+
+        if self.game.order[0] == 0:
+            #Agent is dealer, opponent acts first
+            opp_state = self._get_opp_state()
+            opp_action = self.select_action(opp_state, epsilon=0.0)  # No exploration for opponent
+            if opp_action == 0:  # opponent folds
+                self.reward = self.pot - self.agent_contribution  # Agent wins the pot
+                self.done = True
+                state = self._get_state()
+                action = 1
+                return state, action, self._get_state(), self.reward, self.done, {"winner": 0}
+            elif opp_action == 1:
+                amount = self.current_to_call
+            elif opp_action == 2:
+                amount = min(self.current_to_call + 2, self.game.chips[1])
+            elif opp_action == 3:
+                amount = min(self.current_to_call + 10, self.game.chips[1])
+
+            self.current_to_call = amount
+            self.game.chips[1] -= amount
+            self.opponent_contribution += amount - 2
+            self.pot += amount - 2
+            #player action in response
+            state = self._get_state()
+            action = self.select_action(state, epsilon=epsilon)
+
+            if action == 0:  # fold
+                self.reward = 0
+                self.done = True
+                return state, action, self._get_state(), self.reward, self.done, {"winner": 1}
+            elif action == 1:
+                amount = self.current_to_call
+            elif action == 2:
+                amount = min(self.current_to_call + 2, self.game.chips[0])
+            elif action == 3:
+                amount = min(self.current_to_call + 10, self.game.chips[0])
+
+            self.current_to_call = amount
+            self.game.chips[0] -= amount - self.agent_contribution
+            self.agent_contribution += amount - self.agent_contribution
+            self.pot += amount - self.agent_contribution
+            
+            #Go back to opponent if there was a raise
+            if amount > self.current_to_call:
+
+                #Opponent responds to raise
+                opp_state = self._get_opp_state()
+                opp_action = self.select_action(opp_state, epsilon=0.0)  # No exploration for opponent
+                if opp_action == 0:  # opponent folds
+                    self.reward = self.pot - self.agent_contribution  # Agent wins the pot
+                    self.done = True
+                    return state, action, self._get_state(), self.reward, self.done, {"winner": 0}
+                elif opp_action >= 1:
+                    amount = self.current_to_call
+                    #Opponent can only call or fold, on second go around for simplicity
+                    self.game.chips[1] -= amount - self.opponent_contribution
+                    self.opponent_contribution += amount - self.opponent_contribution
+                    self.pot += amount - self.opponent_contribution
+
+            self.reward = self._resolve_showdown()
+            self.done = True
+            return state, action, self._get_state(), self.reward, self.done, {"winner": 0 if self.reward > 0 else 1}
+                
+        else:
+            state = self._get_state()
+            action = self.select_action(state, epsilon=epsilon)
+            
+            if action == 0:  # fold
+                self.reward = 0
+                self.done = True
+                return state, action, self._get_state(), self.reward, self.done, {"winner": 1}
+            elif action == 1:
+                amount = self.current_to_call
+            elif action == 2:
+                amount = min(self.current_to_call + 2, self.game.chips[0])
+            elif action == 3:
+                amount = min(self.current_to_call + 10, self.game.chips[0])
+
+            self.current_to_call = amount
+            self.game.chips[1] -= amount
+            self.agent_contribution += amount - 2
+            self.pot += amount - 2
+
+            #opponent action in response
+            opp_state = self._get_opp_state()
+            opp_action = self.select_action(opp_state, epsilon=0.0)  # No exploration for opponent
+            if opp_action == 0:  # opponent folds
+                self.reward = self.pot - self.agent_contribution  # Agent wins the pot
+                self.done = True
+                return state, action, self._get_state(), self.reward, self.done, {"winner": 0}
+            elif opp_action == 1:
+                amount = self.current_to_call
+            elif action == 2:
+                amount = min(self.current_to_call + 2, self.game.chips[0])
+            elif action == 3:
+                amount = min(self.current_to_call + 10, self.game.chips[0])
+
+            self.game.chips[1] -= amount - self.opponent_contribution
+            self.opponent_contribution += amount - self.opponent_contribution
+            self.pot += amount - self.opponent_contribution
+            self.current_to_call = amount
+            if amount > self.current_to_call:
+                #Go back to agent is there was a raise
+                state_2 = self._get_state()
+                action_2 = self.select_action(state_2, epsilon=epsilon)
+                if action_2 == 0:  # fold
+                    self.reward = 0
+                    self.done = True
+                    return state, action, self._get_state(), self.reward, self.done, {"winner": 1}
+                elif action_2 >= 1:
+                    action_2 = 1 #For simplicty only call or fold to prevent infinite loop, but this could be improved in future versions
+                    amount = self.current_to_call
+                    self.game.chips[1] -= amount - self.agent_contribution
+                    self.agent_contribution += amount - self.agent_contribution
+                    self.pot += amount - self.agent_contribution
+
+            self.reward = self._resolve_showdown()
+            self.done = True
+            return state, action, self._get_state(), self.reward, self.done, {"winner": 0 if self.reward > 0 else 1}
+
+        
     def _get_q_value(self, state, action):
         if state not in self.q_table:
             self.q_table[state] = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0}
@@ -866,24 +1007,43 @@ class PokerEnv:
         best_action = max(q_values, key=q_values.get)
         return best_action
 
-    def train(self, episodes=2000, alpha=0.1, gamma=0.95, epsilon=0.2, epsilon_decay=0.9995, min_epsilon=0.05):
-        rewards = []
-        for episode in range(episodes):
-            state = self.reset()
-            total_reward = 0.0
-            done = False
-            while not done:
-                action = self.select_action(state, epsilon)
-                next_state, reward, done, info = self.step(action)
-                old_value = self._get_q_value(state, action)
-                best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
-                new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
-                self._set_q_value(state, action, new_value)
-                total_reward += reward
-                state = next_state
-            rewards.append(total_reward)
-            epsilon = max(min_epsilon, epsilon * epsilon_decay)
-        return rewards
+    def train(self, episodes=2000, alpha=0.1, gamma=0.95, epsilon=0.2, epsilon_decay=0.9995, min_epsilon=0.05, simple_opponent=True):
+        if simple_opponent: 
+            rewards = []
+            for episode in range(episodes):
+                state = self.reset()
+                total_reward = 0.0
+                done = False
+                while not done:
+                    action = self.select_action(state, epsilon)
+                    next_state, reward, done, info = self.step(action)
+                    old_value = self._get_q_value(state, action)
+                    best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
+                    new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
+                    self._set_q_value(state, action, new_value)
+                    total_reward += reward
+                    state = next_state
+                rewards.append(total_reward)
+                epsilon = max(min_epsilon, epsilon * epsilon_decay)
+            return rewards
+        else:
+            rewards = []
+            for episode in range(episodes):
+                state = self.reset(dealer=0 if np.random.rand() < 0.5 else 1) #Make dealer random to avoid biasing agent
+                total_reward = 0.0
+                done = False
+                while not done:
+                    state, action, next_state, reward, done, info = self.advanced_step(epsilon=epsilon)
+                    state = self._get_state()
+                    old_value = self._get_q_value(state, action)
+                    best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
+                    new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
+                    self._set_q_value(state, action, new_value)
+                    total_reward += reward
+                    state = next_state
+                rewards.append(total_reward)
+                epsilon = max(min_epsilon, epsilon * epsilon_decay)
+            return rewards
 
     def get_policy(self):
         return {state: max(values, key=values.get) for state, values in self.q_table.items()}
@@ -897,8 +1057,11 @@ class PokerEnv:
         with open(path, 'rb') as f:
             self.q_table = pickle.load(f)
 
-    def make_decision(self, card1, card2):
+    def make_decision(self, card1, card2, text=True):
         self.reset(card1, card2)
         state = self._get_state()
         action = self.select_action(state, epsilon=0.0)  # No exploration during decision making
-        return self.action_names[action]
+        if text:
+            return self.action_names[action]
+        else: 
+            return action

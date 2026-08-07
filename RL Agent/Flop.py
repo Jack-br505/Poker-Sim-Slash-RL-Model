@@ -183,8 +183,14 @@ class advancedPokerEnv(PokerEnv):
             self.current_to_call - self.agent_contribution
         )
 
-    def reset(self, card1=None, card2=None, community = {0: None, 1:None, 2:None,3:None, 4:None}):
+    def reset(self, card1=None, card2=None, community = {0: None, 1:None, 2:None,3:None, 4:None}, dealer=0):
         if card1 is not None and card2 is not None:
+            #Check revealed cards
+            self.rev_cards = 0
+            for i in range(5):
+                if community[i] is not None:
+                    self.rev_cards += 1
+            
             self.game = game(
                 players=self.players,
                 chip_dict={i: self.starting_stack for i in range(self.players)},
@@ -197,7 +203,7 @@ class advancedPokerEnv(PokerEnv):
             self.game = game(
                 players=self.players,
                 chip_dict={i: self.starting_stack for i in range(self.players)},
-                dealer=1,
+                dealer=dealer,
             )
         #Set to a scenario where each player has contribuited 2 chips
         self.pot = 4
@@ -278,25 +284,45 @@ class advancedPokerEnv(PokerEnv):
         self.done = True
         return self._get_state(), self.reward, self.done, {"winner": 0 if self.reward > 0 else 1}
     
-    def train(self, episodes=50000, alpha=0.1, gamma=0.95, epsilon=0.2, epsilon_decay=0.9995, min_epsilon=0.05):
+    def train(self, episodes=50000, alpha=0.1, gamma=0.95, epsilon=0.2, epsilon_decay=0.9995, min_epsilon=0.05, simple_opponent=True):
         rewards = []
-        for episode in range(episodes):
-            for i in [3, 4, 5]:
-                self.rev_cards = i
-                state = self.reset()
-                total_reward = 0.0
-                done = False
-                while not done:
-                    action = self.select_action(state, epsilon)
-                    next_state, reward, done, info = self.step(action)
-                    old_value = self._get_q_value(state, action)
-                    best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
-                    new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
-                    self._set_q_value(state, action, new_value)
-                    total_reward += reward
-                    state = next_state
-                rewards.append(total_reward)
-                epsilon = max(min_epsilon, epsilon * epsilon_decay)
+        if simple_opponent:
+            for episode in range(episodes):
+                for i in [3, 4, 5]:
+                    self.rev_cards = i
+                    state = self.reset()
+                    total_reward = 0.0
+                    done = False
+                    while not done:
+                        action = self.select_action(state, epsilon)
+                        next_state, reward, done, info = self.step(action)
+                        old_value = self._get_q_value(state, action)
+                        best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
+                        new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
+                        self._set_q_value(state, action, new_value)
+                        total_reward += reward
+                        state = next_state
+                    rewards.append(total_reward)
+                    epsilon = max(min_epsilon, epsilon * epsilon_decay)
+        else:
+            rewards = []
+            for episode in range(episodes):
+                for i in [3, 4, 5]:
+                    self.rev_cards = i
+                    state = self.reset(dealer=0 if np.random.rand() < 0.5 else 1) #Make dealer random to avoid biasing agent
+                    total_reward = 0.0
+                    done = False
+                    while not done:
+                        state, action, next_state, reward, done, info = self.advanced_step(epsilon=epsilon)
+                        state = self._get_state()
+                        old_value = self._get_q_value(state, action)
+                        best_next_value = max(self.q_table.get(next_state, {0: 0.0, 1: 0.0, 2: 0.0, 3 : 0.0}).values())
+                        new_value = old_value + alpha * (reward + gamma * best_next_value - old_value)
+                        self._set_q_value(state, action, new_value)
+                        total_reward += reward
+                        state = next_state
+                        rewards.append(total_reward)
+                        epsilon = max(min_epsilon, epsilon * epsilon_decay)
         return rewards
 
     def make_decision(self, card1=None, card2=None, community={0: None, 1:None, 2:None, 3:None,4:None}):
@@ -314,7 +340,7 @@ if __name__ == '__main__':
         print(f'Model loaded from {model_path}')
     
     start_time = time.perf_counter()
-    rewards = env.train(episodes=1000)
+    rewards = env.train(episodes=1000000, alpha=0.1, gamma=0.95, epsilon=0.2, epsilon_decay=0.99995, min_epsilon=0.05, simple_opponent=False)
     print(f"Training time: {-start_time + time.perf_counter()}")
     print('Training complete')
     print('Average reward:', sum(rewards) / len(rewards))
@@ -329,8 +355,10 @@ if __name__ == '__main__':
 
 
 #Test a random case
-card1 = ['A', 'Diamonds']
-card2 = ['K', 'Hearts']
-community = {0: ["3", "Clubs"], 1:["K", "Spades"], 2:['5', "Hearts"], 3:None,4:None}
+card1 = ['5', 'Hearts']
+card2 = ['8', 'Diamonds']
+community = {0: ["J", "Hearts"], 1:["5", "Clubs"], 2:['7', "Spades"], 3:None,4:None}
 print('\nDecision with trained model:')
 print(env.make_decision(card1, card2, community))
+
+
