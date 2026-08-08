@@ -24,7 +24,8 @@ class quick_game():
         if community is None:
             self.community = {0 : None, 1 : None, 2 : None, 3 : None, 4 : None}
         else:
-            self.community = community
+            # Make a shallow copy to avoid mutating the caller-provided dict across iterations
+            self.community = community.copy()
         self.deck = deck()
 
         #Remove community cards from deck if specified before drawing stuff
