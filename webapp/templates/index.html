@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title> Poker Simulator</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;margin:20px}
+      h1{margin:0 0 20px;text-align:center;font-size:2.2rem}
+      label{display:inline-block;margin-right:12px;vertical-align:top;margin-top:8px}
+      .card-img{width:60px}
+      .cards-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    </style>
+    <script>
+      const BACK_IMG_URL = 'https://deckofcardsapi.com/static/img/back.png';
+      function updatePreview(id, sel){
+        const val = sel.value;
+        const img = document.getElementById(id);
+        if(!val){
+          img.src = BACK_IMG_URL;
+          img.style.display = 'inline-block';
+          return;
+        }
+        const parts = val.split('-');
+        let v = parts[0];
+        if(v==='10') v='0';
+        const suit = parts[1][0].toUpperCase();
+        img.src = `https://deckofcardsapi.com/static/img/${v}${suit}.png`;
+        img.style.display='inline-block';
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Poker Simulator</h1>
+    {% if sim_error %}
+      <div style="color:darkred">Simulation import error: {{ sim_error }}</div>
+    {% endif %}
+    {% if rl_error %}
+      <div style="color:darkred">RL import error: {{ rl_error }}</div>
+    {% endif %}
+
+    <form action="/simulate" method="post">
+      <label>Number of players (2-8):
+        <input type="number" name="player_count" min="2" max="8" value="4" required>
+      </label>
+
+      <label>Hole Card 1:
+        <select name="card1" onchange="updatePreview('p1', this)">
+          <option value="">-- random --</option>
+          {% for v in values %}
+            {% for s in suits %}
+              <option value="{{v}}-{{s}}">{{v}} of {{s}}</option>
+            {% endfor %}
+          {% endfor %}
+        </select>
+        <img id="p1" class="card-img" src="https://deckofcardsapi.com/static/img/back.png" />
+      </label>
+
+      <label>Hole Card 2:
+        <select name="card2" onchange="updatePreview('p2', this)">
+          <option value="">-- random --</option>
+          {% for v in values %}
+            {% for s in suits %}
+              <option value="{{v}}-{{s}}">{{v}} of {{s}}</option>
+            {% endfor %}
+          {% endfor %}
+        </select>
+        <img id="p2" class="card-img" src="https://deckofcardsapi.com/static/img/back.png" />
+      </label>
+
+      <fieldset style="margin-top:12px">
+        <legend>Community cards (optional)</legend>
+        {% for i in range(5) %}
+          <label>Card {{i+1}}:
+            <select name="comm{{i}}" onchange="updatePreview('c{{i}}', this)">
+              <option value="">-- random --</option>
+              {% for v in values %}
+                {% for s in suits %}
+                  <option value="{{v}}-{{s}}">{{v}} of {{s}}</option>
+                {% endfor %}
+              {% endfor %}
+            </select>
+            <img id="c{{i}}" class="card-img" src="https://deckofcardsapi.com/static/img/back.png" />
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <label>Simulations (suggested 100000):
+        <input type="number" name="sims" min="1000" step="1000" value="100000">
+      </label>
+
+      <button type="submit" style="margin-top:12px">Run Simulation & Get Suggestion</button>
+      <button type="button" onclick="location.href='/play'" style="margin-top:12px;margin-left:12px">Play vs AI</button>
+    </form>
+
+    <p style="margin-top:20px">Note: simulations are CPU intensive; 100,000 runs may take multiple seconds to minutes depending on environment.</p>
+  </body>
+</html>
