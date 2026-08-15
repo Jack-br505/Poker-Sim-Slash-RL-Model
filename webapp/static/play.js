@@ -71,12 +71,9 @@ async function doAction(action){
   if(data.community_all) window.community_all = data.community_all;
   if(data.stage !== undefined && data.stage !== null) window.stage = data.stage;
 
-  // Map returned card strings to image urls
+  // Map returned card strings to image urls for human only
   if(data.human_hand){
     data.human_cards = [buildCardUrl(data.human_hand[0]), buildCardUrl(data.human_hand[1])];
-  }
-  if(data.ai_hand){
-    data.ai_cards = [buildCardUrl(data.ai_hand[0]), buildCardUrl(data.ai_hand[1])];
   }
   // community stays as strings; updateUI will map them
   updateUI(data);
@@ -90,10 +87,11 @@ async function doAction(action){
                   logText.includes('tie');
 
   if(isFinal){
-    // Reveal AI cards (if provided)
-    if(data.ai_cards){
-      document.getElementById('a1').src = data.ai_cards[0];
-      document.getElementById('a2').src = data.ai_cards[1];
+    // Reveal AI cards (if provided by server on final state)
+    if(data.ai_hand){
+      const aiCards = [buildCardUrl(data.ai_hand[0]), buildCardUrl(data.ai_hand[1])];
+      document.getElementById('a1').src = aiCards[0];
+      document.getElementById('a2').src = aiCards[1];
     }
     // Disable action buttons until user clicks New Hand
     setActionButtonsEnabled(false);

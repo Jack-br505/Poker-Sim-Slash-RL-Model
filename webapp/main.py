@@ -161,13 +161,12 @@ async def play_action(request: Request):
             community_all = [None, None, None, None, None]
 
         human_hand_strs = hand_to_strs(human_hand)
-        ai_hand_strs = hand_to_strs(ai_hand)
 
+        # Do not send AI hole cards until round end
         return JSONResponse({
             'player_chips': player_chips,
             'ai_chips': ai_chips,
             'human_hand': human_hand_strs,
-            'ai_hand': ai_hand_strs,
             'community': [None, None, None, None, None],
             'community_all': community_all,
             'stage': 0,
