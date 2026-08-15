@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Play vs Q-Learning Model</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;margin:20px}
+      .card-img{width:80px}
+      .cards{display:flex;gap:12px;align-items:center}
+      .buttons{display:flex;gap:8px;margin-top:12px}
+      #log{margin-top:12px;border:1px solid #ddd;padding:8px;height:160px;overflow:auto}
+    </style>
+  </head>
+  <body>
+    <h1>Play vs Q-Learning Model</h1>
+    <div>
+      <strong>Your chips:</strong> <span id="player-chips">30</span>
+      &nbsp;&nbsp; <strong>AI chips:</strong> <span id="ai-chips">30</span>
+    </div>
+
+    <div class="cards" style="margin-top:12px">
+      <div>
+        <div><strong>Your Hand</strong></div>
+        <img id="p1" class="card-img" src="{{ back_img }}" />
+        <img id="p2" class="card-img" src="{{ back_img }}" />
+      </div>
+      <div style="flex-direction:column;">
+        <div><strong>Community</strong></div>
+        <div class="cards" style="margin-top:6px">
+          <img id="c0" class="card-img" src="{{ back_img }}" />
+          <img id="c1" class="card-img" src="{{ back_img }}" />
+          <img id="c2" class="card-img" src="{{ back_img }}" />
+          <img id="c3" class="card-img" src="{{ back_img }}" />
+          <img id="c4" class="card-img" src="{{ back_img }}" />
+        </div>
+      </div>
+      <div>
+        <div><strong>AI Hand</strong></div>
+        <img id="a1" class="card-img" src="{{ back_img }}" />
+        <img id="a2" class="card-img" src="{{ back_img }}" />
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="btn-fold">Fold</button>
+      <button id="btn-call">Call</button>
+      <button id="btn-raise-small">Raise Small</button>
+      <button id="btn-raise-big">Raise Big</button>
+      <button id="btn-new-hand">New Hand</button>
+    </div>
+
+    <div id="log">Game log will appear here.</div>
+
+    <script src="/static/play.js"></script>
+  </body>
+</html>
