@@ -43,6 +43,9 @@ function buildCardUrl(cardStr){
 }
 
 async function doAction(action){
+  // include stage and community_all if present
+  const stage = window.stage || 0;
+  const community_all = window.community_all || null;
   const player_chips = getChips('player_chips');
   const ai_chips = getChips('ai_chips');
   // When dealing a new hand, hide the New Hand button and enable action buttons
@@ -57,13 +60,17 @@ async function doAction(action){
   const res = await fetch('/play_action', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({action, player_chips, ai_chips})
+    body: JSON.stringify({action, player_chips, ai_chips, stage, community_all})
   });
   const data = await res.json();
   if(data.player_chips !== undefined){
     setChips('player_chips', data.player_chips);
     setChips('ai_chips', data.ai_chips);
   }
+  // Store/refresh community_all and stage for staged play
+  if(data.community_all) window.community_all = data.community_all;
+  if(data.stage !== undefined && data.stage !== null) window.stage = data.stage;
+
   // Map returned card strings to image urls
   if(data.human_hand){
     data.human_cards = [buildCardUrl(data.human_hand[0]), buildCardUrl(data.human_hand[1])];
@@ -91,6 +98,10 @@ async function doAction(action){
     // Disable action buttons until user clicks New Hand
     setActionButtonsEnabled(false);
     showNewHand(true);
+  } else {
+    // Not final: enable action buttons so user can decide next stage
+    setActionButtonsEnabled(true);
+    showNewHand(false);
   }
 }
 
