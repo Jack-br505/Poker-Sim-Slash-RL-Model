@@ -14,6 +14,7 @@ function updateUI(state){
     document.getElementById('p1').src = state.human_cards[0];
     document.getElementById('p2').src = state.human_cards[1];
   }
+  // Reveal AI cards when provided by server
   if(state.ai_cards){
     document.getElementById('a1').src = state.ai_cards[0];
     document.getElementById('a2').src = state.ai_cards[1];
@@ -44,6 +45,15 @@ function buildCardUrl(cardStr){
 async function doAction(action){
   const player_chips = getChips('player_chips');
   const ai_chips = getChips('ai_chips');
+  // When dealing a new hand, hide the New Hand button and enable action buttons
+  if(action === 'deal'){
+    showNewHand(false);
+    setActionButtonsEnabled(true);
+    // hide AI cards until round end
+    document.getElementById('a1').src = 'https://deckofcardsapi.com/static/img/back.png';
+    document.getElementById('a2').src = 'https://deckofcardsapi.com/static/img/back.png';
+  }
+
   const res = await fetch('/play_action', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -63,12 +73,44 @@ async function doAction(action){
   }
   // community stays as strings; updateUI will map them
   updateUI(data);
+
+  // Determine if this response is a final/round-end state
+  const logText = (data.log || '').toLowerCase();
+  const isFinal = (data.winner !== undefined) ||
+                  logText.includes('showdown') ||
+                  logText.includes('wins') ||
+                  logText.includes('folded') ||
+                  logText.includes('tie');
+
+  if(isFinal){
+    // Reveal AI cards (if provided)
+    if(data.ai_cards){
+      document.getElementById('a1').src = data.ai_cards[0];
+      document.getElementById('a2').src = data.ai_cards[1];
+    }
+    // Disable action buttons until user clicks New Hand
+    setActionButtonsEnabled(false);
+    showNewHand(true);
+  }
+}
+
+function setActionButtonsEnabled(enabled){
+  document.getElementById('btn-fold').disabled = !enabled;
+  document.getElementById('btn-call').disabled = !enabled;
+  document.getElementById('btn-raise-small').disabled = !enabled;
+  document.getElementById('btn-raise-big').disabled = !enabled;
+}
+
+function showNewHand(visible){
+  const el = document.getElementById('btn-new-hand');
+  if(!el) return;
+  el.style.display = visible ? 'inline-block' : 'none';
 }
 
 function newHand(){
-  // Request a new deal from server and show cards
+  const log = document.getElementById('log');
+  log.innerHTML = 'New hand dealt.';
   doAction('deal');
-  document.getElementById('log').innerHTML = 'New hand dealt.';
 }
 
 // Initialize UI from storage
@@ -82,6 +124,9 @@ function newHand(){
   document.getElementById('btn-raise-small').addEventListener('click', ()=> doAction('raise_small'));
   document.getElementById('btn-raise-big').addEventListener('click', ()=> doAction('raise_big'));
   document.getElementById('btn-new-hand').addEventListener('click', newHand);
+  // Hide New Hand until round finishes and ensure action buttons enabled
+  showNewHand(false);
+  setActionButtonsEnabled(true);
   // Auto-deal on load so cards are face-up
   newHand();
 })();
