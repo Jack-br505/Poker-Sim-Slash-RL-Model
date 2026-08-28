@@ -6,7 +6,7 @@ import os
 if __name__ == '__main__':
     env = PokerEnv()
     env.load_model('RL Agent/models/pre_flop_q_table2.pkl')  # Load the pre-trained model if it exists
-    rewards = env.train(episodes=1000, simple_opponent=True)  # Set simple=False to use the new training method
+    rewards = env.train(episodes=100000, simple_opponent=False, epsilon_decay=.999995)  # Set simple=False to use the new training method
     print('Training complete')
     print('Average reward:', sum(rewards) / len(rewards))
     print('Policy size:', len(env.get_policy()))

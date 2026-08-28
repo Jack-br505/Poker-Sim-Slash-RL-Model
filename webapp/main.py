@@ -194,7 +194,7 @@ async def simulate(request: Request,
         try:
             env = PokerEnv()
             # Attempt to load pre-trained model if present in RL Agent models
-            model_path = os.path.join(ROOT, 'RL Agent', 'models', 'pre_flop_q_table.pkl')
+            model_path = os.path.join(ROOT, 'RL Agent', 'models', 'pre_flop_q_table2.pkl')
             if os.path.exists(model_path):
                 try:
                     env.load_model(model_path)
@@ -332,7 +332,7 @@ async def play_action(request: Request):
         if stage == 0:
             if PokerEnv is not None:
                 env = PokerEnv()
-                model_path = os.path.join(ROOT, 'RL Agent', 'models', 'pre_flop_q_table.pkl')
+                model_path = os.path.join(ROOT, 'RL Agent', 'models', 'pre_flop_q_table2.pkl')
                 if os.path.exists(model_path):
                     try:
                         env.load_model(model_path)
