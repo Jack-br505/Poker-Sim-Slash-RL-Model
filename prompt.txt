@@ -1,0 +1,4 @@
+Your task is to build a interactive frontend with FastAPI. The objective is to create a website, using the existing backend infrastructure in this directory, that users can input a scenario
+in a simple game of texas-holdem poker and get different probabilities and suggestions. The probabilities come from the Base_Sim directory, run 100,000 monte carlo simulations of the quick-sim
+in order to find the probabilities of all the hands and the winning probability. Then use the Q-Learning algorithim found in the RL agent directory to suggest to the user what they should do.
+Make sure to use images of cards to make the website more interactive.

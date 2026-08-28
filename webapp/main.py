@@ -4,11 +4,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import sys
 import os
+import pickle
 import random
 random.seed()  # Set random seed
 
 # Ensure project root is importable
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+POT_PATH = os.path.join(ROOT, 'pot.pkl')
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
@@ -33,7 +35,6 @@ except Exception as e:
     many_games = None
     SIM_IMPORT_ERROR = str(e)
     QuickGame = None
-
 # Import RL agent modules from folder with space using importlib
 PokerEnv = None
 AdvancedPokerEnv = None
@@ -97,6 +98,20 @@ def card_to_api_url(card_str: str):
         return None
     return f"https://deckofcardsapi.com/static/img/{code}.png"
 
+def load_pot():
+    try:
+        with open(POT_PATH, 'rb') as pot_file:
+            return max(0, int(pickle.load(pot_file)))
+    except (FileNotFoundError, TypeError, ValueError, EOFError, pickle.PickleError):
+        return 0
+
+def save_pot(pot):
+    with open(POT_PATH, 'wb') as pot_file:
+        pickle.dump(max(0, int(pot)), pot_file)
+
+def reset_pot():
+    save_pot(0)
+
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request, 'index.html', {"request": request, "values": VALUES, "suits": SUITS, "sim_error": SIM_IMPORT_ERROR, "rl_error": RL_IMPORT_ERROR})
@@ -124,6 +139,7 @@ async def play(request: Request):
 
 @app.post('/play_action')
 async def play_action(request: Request):
+
     data = await request.json()
     action = data.get('action', 'deal')
     try:
@@ -148,6 +164,7 @@ async def play_action(request: Request):
 
     # On initial deal, create deck, hands and community and return them (community_all included but hidden)
     if action == 'deal':
+        reset_pot()
         try:
             from Deck_Hand import deck as DeckClass, hand as HandClass
             d = DeckClass()
@@ -155,6 +172,12 @@ async def play_action(request: Request):
             ai_hand = HandClass(d)
             comm = [d.draw_card() for _ in range(5)]
             community_all = [f"{c[0]}-{c[1]}" for c in comm]
+
+            #Save hands and community for later showdown using pickle 
+            pickle.dump(human_hand, open('human_hand.pkl', 'wb'))
+            pickle.dump(ai_hand, open('ai_hand.pkl', 'wb'))
+            pickle.dump(community_all, open('community_all.pkl', 'wb'))
+            
         except Exception:
             human_hand = type('H', (), {'card1': ['A','Spades'], 'card2': ['K','Hearts']})()
             ai_hand = type('H', (), {'card1': ['Q','Clubs'], 'card2': ['J','Diamonds']})()
@@ -170,18 +193,31 @@ async def play_action(request: Request):
             'community': [None, None, None, None, None],
             'community_all': community_all,
             'stage': 0,
-            'log': 'Dealt hands. Place your action.'
+            'log': 'Dealt hands. Place your action.',
+            'ai_action': None,
+            'chips_to_stay': 0,
+            'game_over': False
         })
-
+    else:
+        # Load hands and community from pickle files
+        try:
+            human_hand = pickle.load(open('human_hand.pkl', 'rb'))
+            ai_hand = pickle.load(open('ai_hand.pkl', 'rb'))
+            community_all = pickle.load(open('community_all.pkl', 'rb'))
+        except Exception:
+            return JSONResponse({'player_chips': player_chips, 'ai_chips': ai_chips, 'log': 'Error loading hands. Please deal again.', 'ai_action': None, 'chips_to_stay': 0})
     # For subsequent requests, community_all must be supplied by client (it was returned on deal)
     if not community_all:
-        return JSONResponse({'player_chips': player_chips, 'ai_chips': ai_chips, 'log': 'Missing community_all. Please deal first.'})
+        return JSONResponse({'player_chips': player_chips, 'ai_chips': ai_chips, 'log': 'Missing community_all. Please deal first.', 'ai_action': None, 'chips_to_stay': 0})
 
-    # helpers and initial ante/pot
+    # Load the server-side pot. The ante is posted only once per hand.
     ante = 1
-    player_chips -= ante
-    ai_chips -= ante
-    pot = ante * 2
+    pot = load_pot()
+    if pot == 0 and stage == 0:
+        player_chips -= ante
+        ai_chips -= ante
+        pot = ante * 2
+        save_pot(pot)
 
     small = 1
     big = 3
@@ -218,7 +254,7 @@ async def play_action(request: Request):
                         env.load_model(model_path)
                     except Exception:
                         pass
-                ai_action = env.make_decision(None, None, text=True)
+                ai_action = env.make_decision(ai_hand.card1,ai_hand.card2,text=True)
             else:
                 ai_action = random.choice(['Fold','Call','Raise Small','Raise Big'])
         else:
@@ -232,7 +268,7 @@ async def play_action(request: Request):
                     except Exception:
                         pass
                 comm_dict = {i: community_all[i] for i in range(5)}
-                ai_action = env2.make_decision(None, None, comm_dict)
+                ai_action = env2.make_decision(ai_hand.card1,ai_hand.card2, comm_dict)
             else:
                 ai_action = random.choice(['Fold','Call','Raise Small','Raise Big'])
     except Exception:
@@ -241,12 +277,27 @@ async def play_action(request: Request):
     events.append({'stage': 'preflop' if stage == 0 else ('flop' if stage == 1 else ('turn' if stage == 2 else 'river')),
                    'ai_action': ai_action, 'player_action': user_act_text, 'pot': pot})
 
+    # Determine chips needed to stay in based on AI action (simple mapping)
+    chips_to_stay = 0
+    try:
+        if isinstance(ai_action, str):
+            if 'Raise' in ai_action or 'raise' in ai_action:
+                if 'Small' in ai_action or 'small' in ai_action:
+                    chips_to_stay = small
+                else:
+                    chips_to_stay = big
+            else:
+                chips_to_stay = 0
+    except Exception:
+        chips_to_stay = 0
+
     # Process user folding immediately
     if user_act_text == 'Fold':
         ai_chips += pot
         winner = 'ai'
         outcome = 'You folded. AI wins the pot.'
-        return JSONResponse({'player_chips':player_chips,'ai_chips':ai_chips,'community':community_all,'community_all':community_all,'log':outcome})
+        reset_pot()
+        return JSONResponse({'player_chips':player_chips,'ai_chips':ai_chips, 'ai_hand': hand_to_strs(ai_hand),'pot':0,'community':community_all,'community_all':community_all, 'game_over': True, 'log': f"{outcome} AI action: {ai_action}. Chips to stay: {chips_to_stay}", 'ai_action': ai_action, 'chips_to_stay': chips_to_stay})
 
     # Apply initial raise/call exchange (simple model)
     if user_act_text == 'Raise Small':
@@ -267,13 +318,18 @@ async def play_action(request: Request):
             if ai_action == 'Raise Small': ai_add(small); player_add(small)
             else: ai_add(big); player_add(big)
     elif user_act_text == 'Call':
-        if ai_action == 'Fold': player_chips += pot; winner='player'; outcome='AI folded after your call. You win the pot.'
+        if ai_action == 'Fold':
+            #Make it so Ai cannot fold if there is no bet to call. If ai folds after a call, player wins the pot
+            ai_action = 'Call'
         elif ai_action == 'Call': pass
         elif ai_action == 'Raise Small': ai_add(small); player_add(small)
         else: ai_add(big); player_add(big)
 
+    save_pot(pot)
+
     if winner is not None:
-        return JSONResponse({'player_chips':player_chips,'ai_chips':ai_chips,'community':community_all,'community_all':community_all,'log':outcome})
+        reset_pot()
+        return JSONResponse({'player_chips':player_chips, 'ai_hand': hand_to_strs(ai_hand),'ai_chips':ai_chips,'pot':0,'community':community_all,'community_all':community_all, 'game_over': True, 'log': f"{outcome} AI action: {ai_action}. Chips to stay: {chips_to_stay}", 'ai_action': ai_action, 'chips_to_stay': chips_to_stay})
 
     # No immediate winner: reveal cards for next stage and request user decision
     next_stage = stage + 1
@@ -288,30 +344,71 @@ async def play_action(request: Request):
 
     # If we just revealed up to river (next_stage <=3) return to client to prompt for action
     if next_stage <= 3:
+        
         return JSONResponse({
             'player_chips': max(0,int(player_chips)),
             'ai_chips': max(0,int(ai_chips)),
+            'pot': pot,
             'community': revealed,
             'community_all': community_all,
             'stage': next_stage,
-            'log': f'Cards revealed for stage {next_stage}. Place your action.'
+            'log': f"Cards revealed for stage {next_stage}. AI action: {ai_action}. Chips to stay: {chips_to_stay}, pot: {pot}, Play your action.",
+            'ai_action': ai_action,
+            'chips_to_stay': chips_to_stay,
+            'game_over': False
         })
 
     # If we reach here, resolve showdown (fallback)
     player_chips = max(0, int(player_chips))
     ai_chips = max(0, int(ai_chips))
 
+    #Resolve showdown 
+    game = QuickGame(players=2)
+    #Load a game class because it has the logic of determining winner built in
+
+    #Load in hands and community from pickle files
+    try:
+        human_hand = pickle.load(open('human_hand.pkl', 'rb'))
+        ai_hand = pickle.load(open('ai_hand.pkl', 'rb'))
+        community_all = pickle.load(open('community_all.pkl', 'rb'))
+    except Exception:
+        return JSONResponse({'player_chips':player_chips,'ai_chips':ai_chips,'community':revealed,'community_all':community_all,'log': 'Error loading hands for showdown. Please deal again.', 'ai_action': ai_action, 'chips_to_stay': chips_to_stay})
+    game.hands_dict = { 0: human_hand, 1: ai_hand }
+    #Convert community_all to dictionary for game class
+    game.community = {i: community_all[i] for i in range(5)}
+    winner = game.get_winner()
+
+    if winner == 0:
+        player_chips += pot
+        outcome = f'You win the showdown and take the pot of {pot}.'
+    elif winner == 1:
+        ai_chips += pot
+        outcome = f'AI wins the showdown and takes the pot of {pot}.'
+    else:
+        player_chips += pot // 2
+        ai_chips += pot // 2
+        outcome = f'The showdown is a tie. Pot of {pot} is split.'
+
+    #Reveal the AI's cards to the player
+    
+    reset_pot()
+
     return JSONResponse({
         'player_chips': player_chips,
         'ai_chips': ai_chips,
+        'ai_hand': hand_to_strs(ai_hand),
         'community': revealed,
         'community_all': community_all,
         'events': events,
-        'pot': pot,
+        'pot': 0,
         'winner': None,
-        'log': 'Showdown (not implemented fully in staged flow).',
+        'log': f"{outcome} AI action: {ai_action}. Chips to stay: {chips_to_stay}",
+        'ai_action': ai_action,
+        'chips_to_stay': chips_to_stay,
+        'game_over': True,
         'stage': None
     })
+    
 
 if __name__ == '__main__':
     import uvicorn

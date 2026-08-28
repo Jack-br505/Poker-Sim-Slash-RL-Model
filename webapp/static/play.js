@@ -16,8 +16,10 @@ function updateUI(state){
   }
   // Reveal AI cards when provided by server
   if(state.ai_cards){
-    document.getElementById('a1').src = state.ai_cards[0];
-    document.getElementById('a2').src = state.ai_cards[1];
+
+    document.getElementById('a1').src = buildCardUrl(state.ai_cards[0]);
+    document.getElementById('a2').src = buildCardUrl(state.ai_cards[1]);
+    
   }
   if(state.community){
     for(let i=0;i<5;i++){
@@ -29,7 +31,8 @@ function updateUI(state){
   }
   if(state.log){
     const log = document.getElementById('log');
-    log.innerHTML = state.log + '\n' + log.innerHTML;
+    // Reset log on each user input and show server-provided log
+    log.innerText = state.log;
   }
 }
 
@@ -43,6 +46,9 @@ function buildCardUrl(cardStr){
 }
 
 async function doAction(action){
+  // reset the log on each user input and show server-provided log
+  const log = document.getElementById('log');
+  log.innerText = '';
   // include stage and community_all if present
   const stage = window.stage || 0;
   const community_all = window.community_all || null;
@@ -118,7 +124,7 @@ function showNewHand(visible){
 
 function newHand(){
   const log = document.getElementById('log');
-  log.innerHTML = 'New hand dealt.';
+  log.innerText = 'New hand dealt.';
   doAction('deal');
 }
 

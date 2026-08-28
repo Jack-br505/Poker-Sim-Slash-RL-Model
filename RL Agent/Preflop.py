@@ -723,7 +723,7 @@ class PokerEnv:
         self.players = players
         self.starting_stack = starting_stack
         self.blind = blind
-        self.action_names = {0: "fold", 1: "call", 2: "raise small", 3: "raise big"}
+        self.action_names = {0: "Fold", 1: "Call", 2: "Raise Small", 3: "Raise Big"}
         self.q_table = {}
         self.last_state = None
 

@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Results</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;margin:20px}
+      .card-img{width:60px}
+      .cards{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      table{border-collapse:collapse}
+      th,td{padding:6px;border:1px solid #ddd}
+    </style>
+  </head>
+  <body>
+    <h1>Simulation Results</h1>
+    {% if sim_error %}
+      <div style="color:darkred">Error running simulation: {{ sim_error }}</div>
+    {% endif %}
+
+    <div class="cards" style="margin-top:8px">
+      <strong style="margin-right:8px">Hole Cards:</strong>
+      <img src="{{ hole1_img or back_img }}" class="card-img">
+      <img src="{{ hole2_img or back_img }}" class="card-img">
+    </div>
+
+    <div class="cards" style="margin-top:8px">
+      <strong style="margin-right:8px">Community:</strong>
+      {% for img in comm_imgs %}
+        <img src="{{ img or back_img }}" class="card-img">
+      {% endfor %}
+    </div>
+
+    {% if sim_results %}
+      <h2 style="margin-top:12px">Probabilities (from {{sims}} sims, {{player_count}} players)</h2>
+      <table>
+        <thead><tr><th>Hand</th><th>Probability</th></tr></thead>
+        <tbody>
+          {% for k,v in sim_results.items() %}
+            <tr><td>{{k}}</td><td>{{"{:.4f}".format(v)}}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    <h2 style="margin-top:12px">AI Suggestion</h2>
+    {% if suggestion %}
+      <div style="font-size:18px;font-weight:bold">{{ suggestion }}</div>
+    {% endif %}
+    {% if rl_error %}
+      <div style="color:darkred">RL error: {{ rl_error }}</div>
+    {% endif %}
+
+    <p style="margin-top:12px"><a href="/">Run another scenario</a></p>
+  </body>
+</html>
