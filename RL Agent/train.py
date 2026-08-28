@@ -5,21 +5,17 @@ import os
 
 if __name__ == '__main__':
     env = PokerEnv()
-    env.load_model('RL Agent/models/pre_flop_q_table.pkl')  # Load the pre-trained model if it exists
-    rewards = env.train(episodes=20, simple_opponent=False)  # Set advanced=True to use the new training method
+    env.load_model('RL Agent/models/pre_flop_q_table2.pkl')  # Load the pre-trained model if it exists
+    rewards = env.train(episodes=1000, simple_opponent=True)  # Set simple=False to use the new training method
     print('Training complete')
     print('Average reward:', sum(rewards) / len(rewards))
     print('Policy size:', len(env.get_policy()))
 
-    # Save trained Q-table
-    models_dir = 'models'
-    os.makedirs(models_dir, exist_ok=True)
-    model_path = os.path.join(models_dir, 'pre_flop_q_table.pkl')
-    env.save_model(model_path)
-    print(f'Model saved to {model_path}')
-
+    # Save trained Q-table to RL Agent/models/pre_flop_q_table2.pkl
+    env.save_model('RL Agent/models/pre_flop_q_table2.pkl')
+   
 #Test a random case
-card1 = ['K', 'Diamonds']
-card2 = ['7', 'Hearts']
+card1 = ['10', 'Hearts']
+card2 = ['A', 'Diamonds']
 print('\nDecision with trained model:')
 print(env.make_decision(card1, card2))

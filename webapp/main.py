@@ -127,10 +127,94 @@ async def simulate(request: Request,
                    comm3: str = Form(''),
                    comm4: str = Form(''),
                    sims: int = Form(100000)):
-    # (unchanged simulate handler omitted for brevity in this rewrite)
-    # Reuse original logic; import from the previous file if needed.
-    # For brevity of this patch, keep the simulate route minimal and functional.
-    return templates.TemplateResponse(request, 'result.html', {"request": request, "sim_error": SIM_IMPORT_ERROR, "rl_error": RL_IMPORT_ERROR})
+    # Build community dict
+    community_inputs = [comm0, comm1, comm2, comm3, comm4]
+    community = {}
+    revealed_cards = 0
+
+    for i, c in enumerate(community_inputs):
+        if c:
+            try:
+                val, suit = c.split('-')
+                community[i] = [val, suit]
+                revealed_cards += 1
+            except Exception:
+                community[i] = None
+        else:
+            community[i] = None
+
+    
+    # Parse hole cards
+    hole1 = None
+    hole2 = None
+    if card1:
+        v,s = card1.split('-')
+        hole1 = [v, s]
+    if card2:
+        v,s = card2.split('-')
+        hole2 = [v, s]
+
+    sim_results = None
+    sim_error = None
+    if many_games is None:
+        sim_error = f"Simulation import failed: {SIM_IMPORT_ERROR}"
+    else:
+        try:
+            # run simulations (may take time)
+            
+            info = many_games(sims, players=player_count, card1=hole1, card2=hole2, community=community, print_output=False)
+            sim_results = info
+        except Exception as e:
+            sim_error = str(e)
+
+    suggestion = None
+    rl_error = None
+    if PokerEnv is None:
+        rl_error = f"RL import failed: {RL_IMPORT_ERROR}"
+    #If community cards are provided use the q_table_after_flop.pkl model for decision making
+    elif revealed_cards >= 3:
+        try:
+            env = AdvancedPokerEnv()
+            # Attempt to load pre-trained model if present in RL Agent models
+            model_path = os.path.join(ROOT, 'RL Agent', 'models', 'q_table_after_flop.pkl')
+            if os.path.exists(model_path):
+                try:
+                    env.load_model(model_path)
+                except Exception:
+                    pass
+            # Decision uses hole cards and community cards
+            if hole1 and hole2:
+                suggestion = env.make_decision(hole1, hole2, community)
+            else:
+                suggestion = 'Provide both hole cards for AI suggestion.'
+        except Exception as e:
+            print("Error in AdvancedPokerEnv decision making:", e)
+            rl_error = str(e)
+    else:
+        try:
+            env = PokerEnv()
+            # Attempt to load pre-trained model if present in RL Agent models
+            model_path = os.path.join(ROOT, 'RL Agent', 'models', 'pre_flop_q_table.pkl')
+            if os.path.exists(model_path):
+                try:
+                    env.load_model(model_path)
+                except Exception:
+                    pass
+            # Preflop decision only uses hole cards
+            if hole1 and hole2:
+                suggestion = env.make_decision(hole1, hole2, text=True)
+            else:
+                suggestion = 'Provide both hole cards for AI suggestion.'
+        except Exception as e:
+            rl_error = str(e)
+
+    # Prepare image URLs
+    hole1_img = card_to_api_url(card1)
+    hole2_img = card_to_api_url(card2)
+    comm_imgs = [card_to_api_url(c) for c in community_inputs]
+
+    return templates.TemplateResponse(request, 'result.html', {"request": request, "sim_results": sim_results, "sim_error": sim_error, "suggestion": suggestion, "rl_error": rl_error, "hole1_img": hole1_img, "hole2_img": hole2_img, "comm_imgs": comm_imgs, "player_count": player_count, "sims": sims, "back_img": BACK_IMG_URL})
+   
 
 # --- New endpoints for play-vs-model ---
 @app.get('/play', response_class=HTMLResponse)
